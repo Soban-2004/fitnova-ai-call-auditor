@@ -9,7 +9,7 @@ services:
     runtime: python
     plan: free # bump to `starter` if you need more headroom than 512MB RAM
     region: singapore # closest to the Neon DB's ap-southeast-1 region — change if yours differs
-    rootDir: fitnova/backend
+    rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
