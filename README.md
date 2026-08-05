@@ -31,23 +31,50 @@ not just a happy-path demo.
 
 ## Architecture
 
-```
-Audio in (file upload today; a telephony webhook adapter later — same interface)
-  -> ingestion (idempotency check: source_system + external_id)
-  -> calls row, status=QUEUED
-  -> background worker (asyncio task in the same process, DB-polling, not a broker)
-       TRANSCRIBING  — Deepgram Nova-3, diarized, language="multi" (Hindi-English code-switching safe)
-       ANALYZING     — 3 LLM passes (speaker ID -> issue detection -> dimension ratings),
-                        each schema-validated; issues go through 3-layer validation
-                        (Pydantic -> RapidFuzz -> Gemini embeddings) before being stored
-       SCORING        — deterministic engine computes the score from ratings + validated
-                         tags; the LLM never does arithmetic
-       COMPLETED / FAILED — retry_count + a periodic sweep recover stuck/failed calls
-  -> dashboards (plain SQL, server-rendered per request) + SSE nudges any open tab to refresh
+```mermaid
+flowchart TD
+    A["Call recording"] --> B["Source adapter<br/>(file upload today; telephony webhook later — same interface)"]
+    B --> C{"Ingestion:<br/>idempotency check"}
+    C -->|"new"| D[("calls row<br/>status = QUEUED")]
+    C -->|"already COMPLETED<br/>or in-flight"| E["rejected"]
+    C -->|"previously FAILED"| D
+
+    D --> F["Background worker<br/>(polls DB every few seconds — no broker)"]
+    F --> G["Deepgram Nova-3<br/>transcribe + diarize (language=multi)"]
+    G --> H["PII redaction"]
+    H --> P1["LLM pass 1: speaker role ID"]
+    P1 --> P2["LLM pass 2: issue detection<br/>+ 3-layer validation"]
+    P2 --> P3["LLM pass 3: dimension ratings"]
+    P3 --> J["Deterministic scoring engine<br/>(LLM never does arithmetic)"]
+    J --> K[("call_scores row<br/>version 1")]
+    K --> L["status = COMPLETED"]
+
+    L --> M["SSE: call_status_changed"]
+    M --> N["Open dashboard tabs<br/>auto-refresh (router.refresh())"]
+    L --> O["Dashboards<br/>(plain SQL, server-rendered per request)"]
 ```
 
-LLM calls go through a provider fallback chain — Groq (primary) -> Gemini -> Ollama Cloud —
-so one provider's outage doesn't fail a call outright.
+LLM calls (all 3 passes) go through a provider fallback chain — Groq (primary) -> Gemini ->
+Ollama Cloud — so one provider's outage doesn't fail a call outright.
+
+### Call processing state machine
+
+The whole pipeline above lives as a `status` column on one `calls` row, driven by a
+background worker polling for `QUEUED` rows — not a message broker. A periodic sweep
+recovers calls stuck past a timeout and requeues failed ones under a retry cap:
+
+```mermaid
+stateDiagram-v2
+    [*] --> QUEUED
+    QUEUED --> TRANSCRIBING: worker picks it up
+    TRANSCRIBING --> ANALYZING: Deepgram succeeds
+    ANALYZING --> COMPLETED: score computed
+    TRANSCRIBING --> FAILED: error
+    ANALYZING --> FAILED: error
+    FAILED --> QUEUED: retries left (periodic sweep)
+    FAILED --> FAILED: retries exhausted (manual review)
+    COMPLETED --> [*]
+```
 
 ## Tech stack
 
@@ -120,6 +147,17 @@ API (only the ones where fuzzy match is expected to fail — see below), so they
 Backend on Render, frontend on Vercel, DB already on Neon. Both auto-deploy from this
 repo's `main` branch.
 
+```mermaid
+flowchart LR
+    U["Browser"] -->|"HTTPS"| V["Vercel<br/>Next.js frontend"]
+    V -->|"REST + SSE"| R["Render<br/>FastAPI + background worker"]
+    R -->|"asyncpg"| N[("Neon Postgres")]
+    R --> DG["Deepgram"]
+    R --> GQ["Groq"]
+    R --> GM["Gemini"]
+    R --> OL["Ollama Cloud"]
+```
+
 **Backend (Render)**: `render.yaml` in the repo root is a Blueprint — "New +" -> "Blueprint"
 in Render, connect the repo, it reads build command / start command / health check path
 from that file. You still need to fill in the secrets it leaves blank (`sync: false`):
@@ -170,6 +208,18 @@ dimension ratings run as separate calls (not one call trying to think about ever
 once) at `temperature=0`, each schema-validated before the next step touches the output.
 
 **3-layer tag validation** — an issue tag is never trusted just because the LLM said so:
+
+```mermaid
+flowchart TD
+    A["LLM-produced issue tag"] --> B{"Layer 1: schema valid?<br/>(known tag/severity, non-empty quote, in-bounds timestamp)"}
+    B -->|"no"| R["rejected — never stored"]
+    B -->|"yes"| C{"Layer 2: RapidFuzz<br/>fuzzy match near timestamp?"}
+    C -->|"pass"| O1["status: open"]
+    C -->|"fail"| D{"Layer 3: Gemini embeddings<br/>semantic similarity >= 0.85?"}
+    D -->|"pass"| O2["status: open"]
+    D -->|"fail"| NR["status: needs_review<br/>(kept, surfaced for a human)"]
+```
+
 1. Pydantic schema (right shape, known tag/severity, non-empty quote, in-bounds timestamp)
 2. RapidFuzz (does the quoted text roughly appear in the transcript near that timestamp?)
 3. Gemini embeddings, semantic similarity — catches genuine paraphrases fuzzy match misses
@@ -218,9 +268,27 @@ in-memory map instead, same pattern as the SSE broadcaster right next to it.
 **SSE over polling or WebSockets for live dashboard updates.** Data only ever flows
 server -> client here (a call finished, please refresh) — nothing the client needs to send
 back — so a one-directional stream fits better than a full-duplex WebSocket, and pushing on
-an actual state change beats polling on a timer. No Redis: the worker and the API share one
-process, so an in-process `asyncio.Queue` per subscriber is enough at this scale; it would
-need a real broker the moment there's more than one backend instance.
+an actual state change beats polling on a timer:
+
+```mermaid
+sequenceDiagram
+    participant T as Open dashboard tab
+    participant S as SSE endpoint (/api/events)
+    participant B as In-process broadcaster
+    participant W as Background worker
+
+    T->>S: GET /api/events (opens stream)
+    W->>W: call reaches COMPLETED/FAILED
+    W->>B: publish(call_status_changed)
+    B->>S: push event to subscriber queue
+    S-->>T: event: call_status_changed
+    T->>T: router.refresh()
+    T->>T: dashboard re-fetches, shows new data
+```
+
+No Redis: the worker and the API share one process, so an in-process `asyncio.Queue` per
+subscriber is enough at this scale; it would need a real broker the moment there's more
+than one backend instance.
 
 ## What's real vs. what's simplified
 
