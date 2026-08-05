@@ -1,0 +1,50 @@
+# Render Blueprint — connect this repo via "New +" -> "Blueprint" in the
+# Render dashboard and it reads this file to provision the service. Env vars
+# marked `sync: false` are secrets/deployment-specific values Render will
+# prompt you to fill in by hand; everything else is a sensible default
+# copied from backend/.env.example.
+services:
+  - type: web
+    name: fitnova-backend
+    runtime: python
+    plan: free # bump to `starter` if you need more headroom than 512MB RAM
+    region: singapore # closest to the Neon DB's ap-southeast-1 region — change if yours differs
+    rootDir: fitnova/backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false # Neon connection string — use the pooled (-pooler) endpoint
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: LLM_PROVIDER
+        value: groq
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.0-flash
+      - key: OLLAMA_BASE_URL
+        value: https://ollama.com
+      - key: OLLAMA_API_KEY
+        sync: false
+      - key: OLLAMA_MODEL
+        value: gpt-oss:20b-cloud
+      - key: SCORING_WEIGHTS
+        value: '{"needs_discovery":0.25,"product_knowledge":0.15,"objection_handling":0.15,"compliance":0.20,"trial_booking":0.15,"rapport_building":0.10}'
+      - key: SEVERITY_PENALTIES
+        value: '{"critical":15,"major":8,"minor":3}'
+      - key: MAX_RETRIES
+        value: "3"
+      - key: STUCK_CALL_TIMEOUT_MINUTES
+        value: "10"
+      - key: POLL_INTERVAL_SECONDS
+        value: "5"
+      - key: FRONTEND_URL
+        sync: false # set to the deployed Vercel URL, e.g. https://fitnova.vercel.app
+      - key: UPLOAD_DIR
+        value: ./uploads # ephemeral on Render — see README "what's mocked"

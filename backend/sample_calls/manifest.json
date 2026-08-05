@@ -1,0 +1,79 @@
+[
+  {
+    "file": "call_01_good.wav",
+    "advisor_name": "Priya Sharma",
+    "advisor_id": "c0000000-0000-0000-0000-000000000001",
+    "scenario": "Good call — full discovery, proper booking, compliant",
+    "expected_tags": [],
+    "expected_score_range": [
+      80,
+      95
+    ],
+    "duration_secs": 246.4
+  },
+  {
+    "file": "call_02_pressure.wav",
+    "advisor_name": "Rahul Mehta",
+    "advisor_id": "c0000000-0000-0000-0000-000000000002",
+    "scenario": "Pressure selling — artificial urgency to force a decision",
+    "expected_tags": [
+      "PRESSURE_SELLING"
+    ],
+    "expected_score_range": [
+      50,
+      65
+    ],
+    "duration_secs": 111.4
+  },
+  {
+    "file": "call_03_no_discovery.wav",
+    "advisor_name": "Ananya Reddy",
+    "advisor_id": "c0000000-0000-0000-0000-000000000003",
+    "scenario": "No discovery — jumps straight to pricing",
+    "expected_tags": [
+      "NO_NEEDS_DISCOVERY",
+      "PRICE_BEFORE_VALUE"
+    ],
+    "expected_score_range": [
+      40,
+      60
+    ],
+    "duration_secs": 88.9
+  },
+  {
+    "file": "call_04_overpromise.wav",
+    "advisor_name": "Vikram Patel",
+    "advisor_id": "c0000000-0000-0000-0000-000000000004",
+    "scenario": "Over-promising + compliance violation (medical claims)",
+    "expected_tags": [
+      "OVER_PROMISING",
+      "COMPLIANCE_VIOLATION"
+    ],
+    "expected_score_range": [
+      30,
+      50
+    ],
+    "duration_secs": 108.3
+  },
+  {
+    "file": "call_05_codeswitching.wav",
+    "advisor_name": "Sneha Gupta",
+    "advisor_id": "c0000000-0000-0000-0000-000000000005",
+    "scenario": "Hindi-English code-switching — good call in mixed language",
+    "expected_tags": [],
+    "expected_score_range": [
+      75,
+      90
+    ],
+    "duration_secs": 161.1
+  },
+  {
+    "file": "call_06_nonsales.wav",
+    "advisor_name": "Arjun Nair",
+    "advisor_id": "c0000000-0000-0000-0000-000000000006",
+    "scenario": "Non-sales call — wrong number",
+    "expected_tags": [],
+    "expected_score_range": null,
+    "duration_secs": 39.6
+  }
+]

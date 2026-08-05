@@ -1,0 +1,14 @@
+.env
+.env.local
+.env.*.local
+venv/
+__pycache__/
+*.pyc
+node_modules/
+.next/
+# Live-uploaded call audio (demo Upload page) — genuinely ephemeral, not
+# meant to be versioned. backend/sample_calls/*.wav is the fixed 6-call demo
+# dataset and IS committed — the deploy has no other way to get it onto a
+# fresh host's ephemeral disk (see README's "what's mocked" section).
+uploads/
+.DS_Store
