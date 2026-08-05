@@ -14,6 +14,14 @@ services:
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
     envVars:
+      # Render defaults to a brand-new Python (3.14 at time of writing) with
+      # no prebuilt wheels yet for several pins below — rapidfuzz's sdist
+      # build fails outright on it (a pyproject.toml strictness bug in the
+      # build backend it's forced into without a wheel). Pinned to 3.10 to
+      # match what's actually been tested against these exact pins all
+      # along, not just "anything newer than 3.14."
+      - key: PYTHON_VERSION
+        value: 3.10.13
       - key: DATABASE_URL
         sync: false # Neon connection string — use the pooled (-pooler) endpoint
       - key: DEEPGRAM_API_KEY
