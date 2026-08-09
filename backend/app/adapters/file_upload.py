@@ -8,6 +8,7 @@ from fastapi import UploadFile
 
 from app.adapters.base import BaseSourceAdapter, CallEvent
 from app.config import settings
+from app.services.audio_storage import upload_audio
 
 ALLOWED_EXTENSIONS = {".wav", ".mp3", ".ogg", ".m4a", ".webm"}
 
@@ -51,6 +52,11 @@ class FileUploadAdapter(BaseSourceAdapter):
         async with aiofiles.open(dest_path, "wb") as out:
             await out.write(contents)
 
+        # Best-effort durable copy — audio_ref (below) stays the local path
+        # transcription reads; this is a separate reference purely for
+        # surviving a restart, see services/audio_storage.py's docstring.
+        audio_backup_ref = await upload_audio(str(dest_path), stored_filename)
+
         raw_metadata: dict = {}
         if metadata_str:
             try:
@@ -65,6 +71,7 @@ class FileUploadAdapter(BaseSourceAdapter):
             source_system="file_upload",
             advisor_id=advisor_id,
             audio_ref=str(dest_path),
+            audio_backup_ref=audio_backup_ref,
             called_at=datetime.now(timezone.utc),
             customer_phone=customer_phone,
             raw_metadata=raw_metadata,

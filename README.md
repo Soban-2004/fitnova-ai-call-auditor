@@ -86,6 +86,7 @@ stateDiagram-v2
 | LLM | Groq -> Gemini -> Ollama Cloud fallback chain (no LangChain/LiteLLM — a thin provider abstraction) |
 | Tag validation | Pydantic schema + RapidFuzz fuzzy match + Gemini embeddings (semantic similarity) |
 | Live updates | Server-Sent Events, in-process pub-sub (no Redis at this scale) |
+| Audio storage | Local disk (transcription) + Backblaze B2, S3-compatible API (durable backup, optional) |
 | Backend host | Render |
 | Frontend host | Vercel |
 
@@ -121,7 +122,9 @@ python scripts/seed_score_history.py        # optional: backdates 6 weeks of his
 See `.env.example` for the full list with defaults. The ones with no default that you must
 supply: `DATABASE_URL` (Neon connection string), `DEEPGRAM_API_KEY`, `GROQ_API_KEY`,
 `GEMINI_API_KEY` (also powers tag-validation embeddings, not just the LLM fallback),
-`OLLAMA_API_KEY`, and `NEXT_PUBLIC_API_URL` for the frontend.
+`OLLAMA_API_KEY`, and `NEXT_PUBLIC_API_URL` for the frontend. The four `B2_*` vars are
+optional — leave them blank to run without durable audio backup (see "Durable audio
+storage" under Design decisions).
 
 ### Optional: local Postgres instead of Neon
 
@@ -162,7 +165,8 @@ flowchart LR
 in Render, connect the repo, it reads build command / start command / health check path
 from that file. You still need to fill in the secrets it leaves blank (`sync: false`):
 `DATABASE_URL`, `DEEPGRAM_API_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `OLLAMA_API_KEY`,
-`FRONTEND_URL`.
+`FRONTEND_URL`, and the four `B2_*` vars (optional — omit them to run without durable
+audio backup).
 
 **Frontend (Vercel)**: import the repo, set **Root Directory** to `frontend`, set
 `NEXT_PUBLIC_API_URL` to the Render backend's URL. Redeploy after changing it — Next.js
@@ -290,6 +294,23 @@ No Redis: the worker and the API share one process, so an in-process `asyncio.Qu
 subscriber is enough at this scale; it would need a real broker the moment there's more
 than one backend instance.
 
+**Durable audio storage as a second field, not a replacement.** `Call.audio_ref` (the
+local path transcription reads) and `Call.audio_backup_ref` (a durable `b2:{key}`
+reference, once a Backblaze B2 upload succeeds) are deliberately separate columns rather
+than making the local path durable-or-nothing. Transcription always happens moments after
+upload, long before any restart could occur, so it never needs the durable copy — keeping
+it on a local path means the proven-working transcription code path is literally untouched
+by this. The audio-serving endpoint tries the local file first (fast, no extra round-trip)
+and only reaches for a presigned B2 URL — a `307` redirect, not a proxy — if the local copy
+is gone. The B2 upload itself is best-effort: any failure (not configured, network error,
+bad credentials) just leaves `audio_backup_ref` `NULL` and the call proceeds exactly as it
+would have without B2 at all, since durability here is additive, never load-bearing for the
+pipeline itself. One real bug hit wiring this up: boto3 defaults to the legacy SigV2
+presigned-URL format against a non-AWS endpoint when it can't confidently infer a signing
+region, and B2 rejects that format outright as `UnauthorizedAccess` rather than a clear
+signature error — fixed by explicitly forcing `Config(signature_version="s3v4")` and
+parsing the region straight out of the B2 endpoint hostname.
+
 ## What's real vs. what's simplified
 
 Being direct about this rather than letting it blend in:
@@ -300,12 +321,14 @@ Being direct about this rather than letting it blend in:
   *is* inferred per call is which anonymous diarized `Speaker 0/1` is playing the advisor
   role, via the speaker-ID LLM pass. Nothing cross-checks that the voice on the recording
   actually matches the named advisor — a real gap if upstream metadata were ever wrong.
-- **Audio storage is local disk**, ephemeral on Render. `backend/sample_calls/*.wav` (the
-  6-call demo dataset) is committed to the repo, so it survives every redeploy. A call
-  uploaded live through the demo Upload page has its transcript and score survive fine
-  (that's in Postgres) but its raw audio file is wiped on the next restart — the player
-  would 404 for that one call. The real fix (S3 + presigned URLs + Deepgram's
-  transcribe-by-URL mode) was scoped out for this submission; see "What's next."
+- **Audio storage is local disk plus a durable B2 backup**, not local-disk-only. Render's
+  filesystem is still ephemeral — a redeploy or restart wipes `UPLOAD_DIR` exactly like
+  before — but every new upload is now also copied to Backblaze B2 (S3-compatible API) as
+  `Call.audio_backup_ref`, kept as a field separate from `audio_ref` on purpose (see
+  "Durable audio storage" below). `backend/sample_calls/*.wav` (the 6-call demo dataset)
+  never needed this — committed to the repo, survives every redeploy on its own. B2 itself
+  is optional at the code level: with its env vars unset, `services/audio_storage.py`
+  degrades every call to a no-op and the app behaves exactly as it did before this existed.
   Uploading anything other than the 6 committed sample calls means it goes through the
   full pipeline for real — Deepgram + 3 real LLM calls — burns real API quota, worth
   knowing before a reviewer clicks around.
@@ -322,10 +345,11 @@ Being direct about this rather than letting it blend in:
 
 ## What's next
 
-- **S3 (or equivalent) audio storage** — the one item that actually blocks calling audio
-  storage "production-ready" rather than "demo-ready." Adapter uploads to a bucket,
-  Deepgram transcribes by URL (its own hosted-audio mode, no download-then-upload round
-  trip), the audio endpoint redirects to a presigned URL instead of proxying bytes.
+- **Deepgram transcribe-by-URL** — transcription still reads the local copy of a fresh
+  upload (see "Durable audio storage" below for why that's deliberate and low-risk); once
+  B2 has a permanent copy, pointing Deepgram at a presigned URL directly would mean the
+  local write in `UPLOAD_DIR` could go away entirely — one less ephemeral thing to reason
+  about, not required for correctness today.
 - **Neon's pooled (`-pooler`) connection endpoint** — the direct endpoint was used
   throughout; a workload with many short-lived connections (exactly this app's shape) is
   what Neon's pgbouncer pooling is meant for, and would reduce a real class of connection
@@ -349,7 +373,7 @@ fitnova/
       models/         # SQLAlchemy ORM
       routers/        # FastAPI endpoints
       schemas/        # Pydantic request/response + LLM output shapes
-      services/       # ingestion, transcription, analysis, validation, scoring, processor (worker), events (SSE + progress)
+      services/       # ingestion, transcription, analysis, validation, scoring, processor (worker), events (SSE + progress), audio_storage (B2)
     alembic/versions/  # schema migrations
     sample_calls/      # the 6 committed demo audio files + manifest.json
     tests/

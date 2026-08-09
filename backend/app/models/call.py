@@ -17,6 +17,11 @@ class Call(Base):
     source_system: Mapped[str] = mapped_column(String(50), nullable=False)
     external_id: Mapped[str] = mapped_column(String(255), nullable=False)
     audio_ref: Mapped[str] = mapped_column(Text, nullable=False)
+    # Durable copy of the audio (e.g. "b2:{key}"), separate from audio_ref on
+    # purpose — see services/audio_storage.py's module docstring. NULL if no
+    # backup was made (B2 not configured, upload failed, or this predates
+    # the feature).
+    audio_backup_ref: Mapped[str | None] = mapped_column(Text)
     duration_secs: Mapped[int | None] = mapped_column(Integer)
     called_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(20), server_default="QUEUED")

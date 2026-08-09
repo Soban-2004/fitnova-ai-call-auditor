@@ -55,4 +55,12 @@ services:
       - key: FRONTEND_URL
         sync: false # set to the deployed Vercel URL, e.g. https://fitnova.vercel.app
       - key: UPLOAD_DIR
-        value: ./uploads # ephemeral on Render — see README "what's mocked"
+        value: ./uploads # ephemeral on Render — B2 below is what makes new uploads durable
+      - key: B2_ENDPOINT_URL
+        sync: false # e.g. https://s3.us-west-004.backblazeb2.com — from the B2 bucket's dashboard
+      - key: B2_BUCKET_NAME
+        sync: false
+      - key: B2_KEY_ID
+        sync: false
+      - key: B2_APPLICATION_KEY
+        sync: false

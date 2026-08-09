@@ -51,6 +51,7 @@ async def ingest_call_event(session: AsyncSession, event: CallEvent) -> IngestRe
             existing.status = "QUEUED"
             existing.retry_count = 0
             existing.audio_ref = event.audio_ref  # allow re-upload with corrected audio
+            existing.audio_backup_ref = event.audio_backup_ref
             await session.flush()
             return IngestResult(call_id=str(existing.id), status="QUEUED", is_retry=True)
         # QUEUED / TRANSCRIBING / ANALYZING — already in flight
@@ -70,6 +71,7 @@ async def ingest_call_event(session: AsyncSession, event: CallEvent) -> IngestRe
         source_system=event.source_system,
         external_id=event.external_id,
         audio_ref=event.audio_ref,
+        audio_backup_ref=event.audio_backup_ref,
         duration_secs=event.duration_secs,
         called_at=event.called_at,
         raw_metadata=raw_metadata,

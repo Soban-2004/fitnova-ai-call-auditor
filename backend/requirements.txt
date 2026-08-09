@@ -39,6 +39,10 @@ httpx==0.28.1
 python-dotenv==1.0.1
 aiofiles==24.1.0
 
+# Durable audio storage (Backblaze B2, via its S3-compatible API) — optional,
+# see services/audio_storage.py
+boto3==1.35.99
+
 # Synthetic call generation (scripts/generate_sample_calls.py)
 edge-tts==7.2.8
 pydub==0.25.1

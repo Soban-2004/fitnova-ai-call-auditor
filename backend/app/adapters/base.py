@@ -28,6 +28,10 @@ class CallEvent:
     called_at: datetime | None = None
     customer_phone: str | None = None
     raw_metadata: dict[str, Any] = field(default_factory=dict)
+    # Durable copy (e.g. "b2:{key}"), separate from audio_ref on purpose —
+    # see services/audio_storage.py's module docstring. None if the adapter
+    # didn't attempt one, or it failed.
+    audio_backup_ref: str | None = None
 
 
 class BaseSourceAdapter(ABC):

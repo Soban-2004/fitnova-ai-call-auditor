@@ -54,6 +54,14 @@ class Settings(BaseSettings):
     # Audio storage
     UPLOAD_DIR: str = "./uploads"
 
+    # Backblaze B2 (S3-compatible) — durable copy of uploaded audio. All
+    # blank by default: B2 is optional, not required to run the app. See
+    # services/audio_storage.py.
+    B2_ENDPOINT_URL: str = ""
+    B2_BUCKET_NAME: str = ""
+    B2_KEY_ID: str = ""
+    B2_APPLICATION_KEY: str = ""
+
     @property
     def scoring_weights(self) -> dict[str, float]:
         return json.loads(self.SCORING_WEIGHTS)

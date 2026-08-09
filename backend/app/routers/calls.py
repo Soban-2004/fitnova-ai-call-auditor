@@ -3,7 +3,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +24,8 @@ from app.schemas.call import (
     ScoreHistoryEntry,
     TranscriptSegmentOut,
 )
+from app.services.audio_storage import B2_REF_PREFIX, presigned_url
+from app.services.events import get_call_progress
 from app.services.query_helpers import latest_scores_for_calls, open_issue_counts_for_calls
 
 router = APIRouter(prefix="/api", tags=["calls"])
@@ -38,10 +40,12 @@ ALLOWED_AUDIO_ROOTS = [
     Path(settings.UPLOAD_DIR).resolve(),
 ]
 
-# The step checklist the frontend polls during upload. `Call.current_step`
-# is written live by processor.py's _report_step as the pipeline actually
-# progresses (a real, immediately-committed value — not derived/guessed from
-# the coarse status column), so steps_completed below is genuinely accurate.
+# The step checklist the frontend polls during upload. Progress is read from
+# services/events.py's in-memory store (written live by processor.py's
+# _report_step as the pipeline actually progresses) — NOT a DB column. A
+# per-step DB write was tried first and reverted: it deadlocked against the
+# row lock run_worker_once() holds for the pipeline's entire duration (see
+# processor.py's _report_step docstring).
 _STEP_ORDER = ["TRANSCRIPTION", "PII_REDACTION", "SPEAKER_ID", "ISSUE_DETECTION", "DIMENSION_RATING", "SCORING"]
 
 
@@ -229,21 +233,35 @@ async def get_call_detail(call_id: str, session: AsyncSession = Depends(get_db))
 @router.get("/calls/{call_id}/audio")
 async def get_call_audio(call_id: str, session: AsyncSession = Depends(get_db)):
     """Serves the call's source audio for the call-detail page's player.
-    Whole-file response (no HTTP Range/206 support) — fine at these calls'
-    length (under ~5 min), would need chunked range serving for long-form
-    audio."""
+
+    Tries the local copy (audio_ref) first — every call has one, it's a
+    plain file response, no extra round-trip. Falls back to the durable B2
+    copy (audio_backup_ref) if the local file is gone, which is exactly what
+    happens after a restart on a host with no persistent disk (see
+    services/audio_storage.py). The B2 path redirects the browser straight
+    to a presigned URL rather than proxying bytes through this process.
+
+    Whole-file local response (no HTTP Range/206 support) — fine at these
+    calls' length (under ~5 min); the B2 fallback redirects instead of
+    proxying, so range requests against it are B2's problem, not this
+    process's."""
     call = await session.get(Call, call_id)
     if call is None:
         raise HTTPException(status_code=404, detail=f"Call {call_id} not found")
 
     audio_path = Path(call.audio_ref).resolve()
-    if not any(audio_path.is_relative_to(root) for root in ALLOWED_AUDIO_ROOTS):
-        raise HTTPException(status_code=403, detail="Audio path is outside allowed storage roots")
-    if not audio_path.is_file():
-        raise HTTPException(status_code=404, detail="Audio file not found on disk")
+    local_ok = any(audio_path.is_relative_to(root) for root in ALLOWED_AUDIO_ROOTS) and audio_path.is_file()
+    if local_ok:
+        media_type = mimetypes.guess_type(str(audio_path))[0] or "application/octet-stream"
+        return FileResponse(audio_path, media_type=media_type, filename=audio_path.name)
 
-    media_type = mimetypes.guess_type(str(audio_path))[0] or "application/octet-stream"
-    return FileResponse(audio_path, media_type=media_type, filename=audio_path.name)
+    if call.audio_backup_ref and call.audio_backup_ref.startswith(B2_REF_PREFIX):
+        key = call.audio_backup_ref[len(B2_REF_PREFIX):]
+        url = await presigned_url(key)
+        if url:
+            return RedirectResponse(url, status_code=307)
+
+    raise HTTPException(status_code=404, detail="Audio file not found (no local copy, no durable backup)")
 
 
 @router.get("/calls/{call_id}/status", response_model=CallStatusResponse)
@@ -252,15 +270,18 @@ async def get_call_status(call_id: str, session: AsyncSession = Depends(get_db))
     if call is None:
         raise HTTPException(status_code=404, detail=f"Call {call_id} not found")
 
+    progress = get_call_progress(call_id)
     if call.status == "COMPLETED":
         steps_completed, current_step = _STEP_ORDER, None
     elif call.status == "FAILED":
         steps_completed, current_step = [], None
-    elif call.current_step in _STEP_ORDER:
-        idx = _STEP_ORDER.index(call.current_step)
-        steps_completed, current_step = _STEP_ORDER[:idx], call.current_step
+    elif progress in _STEP_ORDER:
+        idx = _STEP_ORDER.index(progress)
+        steps_completed, current_step = _STEP_ORDER[:idx], progress
     else:
-        # QUEUED, not yet picked up by the worker — current_step is still NULL.
+        # QUEUED and not yet picked up by the worker (or the worker is on a
+        # different process instance — in-memory progress is only visible
+        # within the process that's actually running this call).
         steps_completed, current_step = [], _STEP_ORDER[0]
 
     return CallStatusResponse(
