@@ -5,9 +5,8 @@ An AI pipeline that ingests recorded sales calls, transcribes and diarizes them,
 computes a deterministic score, and surfaces all of it through director/team-leader/advisor
 dashboards with a live contest-and-review workflow.
 
-Originally a 48-hour take-home assignment; built instead at production-level care since
-there was no time pressure — real tests, real error handling, real failure-path recovery,
-not just a happy-path demo.
+A personal project built at production-level care rather than as a quick demo —
+real tests, real error handling, real failure-path recovery, not just a happy path.
 
 **Live:**
 - Frontend: https://fitnova-ai-call-auditor.vercel.app
