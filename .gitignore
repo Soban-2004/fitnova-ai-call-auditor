@@ -11,4 +11,7 @@ node_modules/
 # dataset and IS committed — the deploy has no other way to get it onto a
 # fresh host's ephemeral disk (see README's "what's mocked" section).
 uploads/
+# Throwaway audio for manually testing the Upload page — not the committed
+# demo dataset (that's backend/sample_calls/), never meant to be versioned.
+backend/test_uploads/
 .DS_Store
