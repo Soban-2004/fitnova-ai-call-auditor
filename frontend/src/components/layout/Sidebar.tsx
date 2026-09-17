@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, User, Upload, Activity, PhoneCall } from "lucide-react";
+import { LayoutDashboard, Upload, Activity, PhoneCall, Mic, Bot, UserPlus } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Advisor, Team } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { categoryColorVar, cn } from "@/lib/utils";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -52,6 +52,10 @@ export function Sidebar() {
           <PhoneCall size={16} />
           All Calls
         </NavLink>
+        <NavLink href="/leads" active={pathname === "/leads"}>
+          <UserPlus size={16} />
+          Leads
+        </NavLink>
 
         <SectionLabel>Director</SectionLabel>
         <NavLink href="/dashboard/director" active={pathname === "/dashboard/director"}>
@@ -66,7 +70,7 @@ export function Sidebar() {
             href={`/dashboard/team/${team.id}`}
             active={pathname === `/dashboard/team/${team.id}`}
           >
-            <Users size={16} />
+            <IdentityDot color={categoryColorVar(team.id)} />
             {team.name}
           </NavLink>
         ))}
@@ -82,7 +86,7 @@ export function Sidebar() {
                 active={pathname === `/dashboard/advisor/${advisor.id}`}
                 indent
               >
-                <User size={14} />
+                <IdentityDot color={categoryColorVar(advisor.id)} />
                 {advisor.name}
               </NavLink>
             ))}
@@ -93,6 +97,14 @@ export function Sidebar() {
         <NavLink href="/upload" active={pathname === "/upload"}>
           <Upload size={16} />
           Upload a Call
+        </NavLink>
+        <NavLink href="/live" active={pathname === "/live"}>
+          <Mic size={16} />
+          Live Call Coaching
+        </NavLink>
+        <NavLink href="/agent" active={pathname === "/agent"}>
+          <Bot size={16} />
+          Voice Intake Agent
         </NavLink>
       </nav>
     </aside>
@@ -105,6 +117,13 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   );
+}
+
+/** Fixed per-team/advisor color dot -- stays the same hue regardless of
+ * active/hover state, so it works as a stable visual index down the list
+ * (and matches the same entity's color everywhere else in the app). */
+function IdentityDot({ color }: { color: string }) {
+  return <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />;
 }
 
 function EmptyHint() {
@@ -130,11 +149,11 @@ function NavLink({
     <Link
       href={href}
       className={cn(
-        "flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors duration-150",
+        "flex items-center gap-2 rounded-lg border-l-2 px-2 py-1.5 text-sm transition-colors duration-150",
         indent && "ml-3",
         active
-          ? "font-semibold text-[var(--series-1)] bg-[color-mix(in_srgb,var(--series-1)_12%,transparent)]"
-          : "font-normal text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[color-mix(in_srgb,var(--text-secondary)_10%,transparent)]"
+          ? "border-[var(--series-1)] font-semibold text-[var(--series-1)] bg-[color-mix(in_srgb,var(--series-1)_12%,transparent)]"
+          : "border-transparent font-normal text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[color-mix(in_srgb,var(--text-secondary)_10%,transparent)]"
       )}
     >
       {children}

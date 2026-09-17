@@ -121,6 +121,26 @@ export interface CallDetail {
   current_score: number | null;
 }
 
+export const LEAD_STATUSES = ["NEW", "ASSIGNED", "CONTACTED", "TRIAL_BOOKED"] as const;
+export type LeadStatus = (typeof LEAD_STATUSES)[number];
+
+export interface LeadOut {
+  id: string;
+  call_id: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  fitness_goal: string | null;
+  health_notes: string | null;
+  availability: string | null;
+  confirmed_time: string | null;
+  assigned_advisor_id: string | null;
+  assigned_advisor_name: string | null;
+  status: LeadStatus;
+  call_score: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ScoreTrendPoint {
   week: string;
   avg_score: number;

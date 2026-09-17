@@ -1,8 +1,8 @@
 "use client";
 
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { formatDimensionLabel } from "@/lib/utils";
+import { categoryColorVar, formatDimensionLabel } from "@/lib/utils";
 import type { DimensionRatingOut } from "@/lib/types";
 
 export function DimensionRatingsChart({ dimensions }: { dimensions: DimensionRatingOut[] }) {
@@ -49,7 +49,11 @@ export function DimensionRatingsChart({ dimensions }: { dimensions: DimensionRat
                   "Score",
                 ]}
               />
-              <Bar dataKey="score" fill="var(--series-1)" radius={[4, 4, 0, 0]} maxBarSize={48} />
+              <Bar dataKey="score" radius={[4, 4, 0, 0]} maxBarSize={48}>
+                {data.map((d) => (
+                  <Cell key={d.dimension} fill={categoryColorVar(d.dimension)} />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>

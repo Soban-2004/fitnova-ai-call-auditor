@@ -2,7 +2,7 @@ import Link from "next/link";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { formatTagLabel, scoreStatus } from "@/lib/utils";
+import { categoryColorVar, formatTagLabel, scoreStatus } from "@/lib/utils";
 import { EmptyState } from "./ScoreTrendChart";
 import type { TeamDashboard } from "@/lib/types";
 
@@ -42,9 +42,13 @@ export function AdvisorLeaderboard({ advisors }: { advisors: TeamDashboard["advi
                     <td className="py-2.5">
                       <Link
                         href={`/dashboard/advisor/${advisor.advisor_id}`}
-                        className="font-medium hover:underline"
+                        className="flex items-center gap-2 font-medium hover:underline"
                         style={{ color: "var(--text-primary)" }}
                       >
+                        <span
+                          className="h-2 w-2 shrink-0 rounded-full"
+                          style={{ backgroundColor: categoryColorVar(advisor.advisor_id) }}
+                        />
                         {advisor.advisor_name}
                       </Link>
                     </td>

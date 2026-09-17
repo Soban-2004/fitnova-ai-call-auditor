@@ -1,26 +1,19 @@
-import { cn } from "@/lib/utils";
+import { cn, statusColorVar, type StatusRole } from "@/lib/utils";
 import type { HTMLAttributes } from "react";
-
-type StatusRole = "good" | "warning" | "critical" | "muted";
-
-const ROLE_VAR: Record<StatusRole, string> = {
-  good: "var(--status-good)",
-  warning: "var(--status-warning)",
-  critical: "var(--status-critical)",
-  muted: "var(--text-muted)",
-};
 
 export function Badge({
   role = "muted",
+  dot = false,
   className,
   style,
+  children,
   ...props
-}: HTMLAttributes<HTMLSpanElement> & { role?: StatusRole }) {
-  const color = ROLE_VAR[role];
+}: HTMLAttributes<HTMLSpanElement> & { role?: StatusRole; dot?: boolean }) {
+  const color = statusColorVar(role);
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium",
         className
       )}
       style={{
@@ -29,6 +22,9 @@ export function Badge({
         ...style,
       }}
       {...props}
-    />
+    >
+      {dot && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />}
+      {children}
+    </span>
   );
 }

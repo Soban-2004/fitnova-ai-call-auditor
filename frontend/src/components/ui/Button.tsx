@@ -31,6 +31,7 @@ export function Button({
       className={cn(
         "inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-opacity",
         "disabled:cursor-not-allowed disabled:opacity-50",
+        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--series-1)]",
         !disabled && "hover:opacity-90",
         VARIANT_CLASSES[variant],
         className

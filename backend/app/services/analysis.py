@@ -18,6 +18,7 @@ from app.llm.base import LLMProviderError
 from app.llm.factory import get_provider_chain
 from app.models.analysis import PromptVersion
 from app.schemas.analysis import DimensionRatingResult, IssueDetectionResult, SpeakerIdResult
+from app.services.telemetry import track_llm_call
 
 logger = logging.getLogger("fitnova.analysis")
 
@@ -56,18 +57,27 @@ def format_transcript(segments: list[dict], use_labels: bool = True) -> str:
     return "\n".join(lines)
 
 
-async def complete_with_fallback(system_prompt: str, user_message: str, temperature: float = 0.0) -> dict:
+async def complete_with_fallback(
+    system_prompt: str, user_message: str, temperature: float = 0.0, purpose: str = "unspecified"
+) -> dict:
     """Tries each provider in the fallback chain in order, returning the
     first successful parsed-JSON response. Raises LLMProviderError only if
-    every provider in the chain fails."""
+    every provider in the chain fails.
+
+    `purpose` is telemetry-only (see services/telemetry.py) — this function
+    stays the one place that walks the fallback chain regardless of which of
+    the 3 analysis passes is calling it.
+    """
     chain = get_provider_chain()
     if not chain:
         raise LLMProviderError("No LLM providers are configured")
 
     last_error: Exception | None = None
     for name, provider in chain:
+        model_name = getattr(provider, "model", None) or getattr(provider, "model_name", "unknown")
         try:
-            return await provider.complete(system_prompt, user_message, temperature)
+            async with track_llm_call(name, model_name, purpose):
+                return await provider.complete(system_prompt, user_message, temperature)
         except Exception as e:
             logger.warning("LLM provider %s failed, trying next in chain: %s", name, e)
             last_error = e
@@ -76,7 +86,7 @@ async def complete_with_fallback(system_prompt: str, user_message: str, temperat
 
 async def identify_speakers(segments: list[dict], system_prompt: str) -> SpeakerIdResult:
     transcript = format_transcript(segments, use_labels=True)
-    raw = await complete_with_fallback(system_prompt, transcript)
+    raw = await complete_with_fallback(system_prompt, transcript, purpose="speaker_id")
     try:
         return SpeakerIdResult.model_validate(raw)
     except ValidationError as e:
@@ -85,7 +95,7 @@ async def identify_speakers(segments: list[dict], system_prompt: str) -> Speaker
 
 async def detect_issues(segments: list[dict], system_prompt: str) -> IssueDetectionResult:
     transcript = format_transcript(segments, use_labels=False)
-    raw = await complete_with_fallback(system_prompt, transcript)
+    raw = await complete_with_fallback(system_prompt, transcript, purpose="issue_detection")
     try:
         return IssueDetectionResult.model_validate(raw)
     except ValidationError as e:
@@ -94,7 +104,7 @@ async def detect_issues(segments: list[dict], system_prompt: str) -> IssueDetect
 
 async def rate_dimensions(segments: list[dict], system_prompt: str) -> DimensionRatingResult:
     transcript = format_transcript(segments, use_labels=False)
-    raw = await complete_with_fallback(system_prompt, transcript)
+    raw = await complete_with_fallback(system_prompt, transcript, purpose="dimension_rating")
     try:
         return DimensionRatingResult.model_validate(raw)
     except ValidationError as e:

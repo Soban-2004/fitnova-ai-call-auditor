@@ -1,8 +1,8 @@
 "use client";
 
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
-import { formatTagLabel } from "@/lib/utils";
+import { categoryColorVar, formatTagLabel } from "@/lib/utils";
 import { EmptyState } from "./ScoreTrendChart";
 
 export function TopIssuesChart({
@@ -60,7 +60,11 @@ export function TopIssuesChart({
                   }}
                   formatter={(value) => [value, "Occurrences"]}
                 />
-                <Bar dataKey="count" fill="var(--series-1)" radius={[0, 4, 4, 0]} maxBarSize={20} />
+                <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={20}>
+                  {chartData.map((d) => (
+                    <Cell key={d.tag_type} fill={categoryColorVar(d.tag_type)} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>

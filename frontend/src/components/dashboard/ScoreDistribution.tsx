@@ -1,8 +1,18 @@
 "use client";
 
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import { scoreStatus, statusColorVar } from "@/lib/utils";
 import { EmptyState } from "./ScoreTrendChart";
+
+/** Band color follows the range's midpoint ("81-100" -> ~90) through the
+ * same red/amber/green thresholds as a score badge -- these buckets are
+ * ordered worse-to-better, so a semantic gradient reads correctly where an
+ * arbitrary identity color wouldn't. */
+function bandColorVar(range: string): string {
+  const [lo, hi] = range.split("-").map(Number);
+  return statusColorVar(scoreStatus((lo + hi) / 2));
+}
 
 export function ScoreDistribution({ data }: { data: { range: string; count: number }[] }) {
   const hasData = data.some((d) => d.count > 0);
@@ -44,7 +54,11 @@ export function ScoreDistribution({ data }: { data: { range: string; count: numb
                   }}
                   formatter={(value) => [value, "Calls"]}
                 />
-                <Bar dataKey="count" fill="var(--series-1)" radius={[4, 4, 0, 0]} maxBarSize={48} />
+                <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={48}>
+                  {data.map((d) => (
+                    <Cell key={d.range} fill={bandColorVar(d.range)} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>

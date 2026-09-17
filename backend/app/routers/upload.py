@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.file_upload import FileUploadAdapter
@@ -6,13 +6,25 @@ from app.database import get_db
 from app.models.org import Advisor
 from app.schemas.call import UploadResponse
 from app.services.ingestion import DuplicateCallError, ingest_call_event
+from app.services.rate_limit import enforce_upload_rate_limit
 
 router = APIRouter(prefix="/api", tags=["upload"])
 _adapter = FileUploadAdapter()
 
 
+def _client_key(request: Request) -> str:
+    # Render sits behind a reverse proxy -- request.client.host alone would
+    # just be the proxy's own address, useless for per-uploader limiting.
+    # X-Forwarded-For's first entry is the original client when present.
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 @router.post("/upload", response_model=UploadResponse, status_code=201)
 async def upload_call(
+    request: Request,
     audio_file: UploadFile = File(...),
     advisor_id: str = Form(...),
     customer_phone: str | None = Form(None),
@@ -20,6 +32,8 @@ async def upload_call(
     metadata: str | None = Form(None),
     session: AsyncSession = Depends(get_db),
 ):
+    enforce_upload_rate_limit(_client_key(request))
+
     advisor = await session.get(Advisor, advisor_id)
     if advisor is None:
         raise HTTPException(status_code=404, detail=f"Advisor {advisor_id} not found")

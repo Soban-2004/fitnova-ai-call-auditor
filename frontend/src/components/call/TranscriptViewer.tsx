@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { formatTagLabel, severityColorVar } from "@/lib/utils";
+import { categoryColorVar, formatTagLabel, severityColorVar } from "@/lib/utils";
 import type { IssueTagOut, TranscriptSegmentOut } from "@/lib/types";
 
 function fmtTs(secs: number): string {
@@ -67,14 +67,16 @@ export function TranscriptViewer({
           <div className="flex flex-wrap gap-1.5">
             {distinctTagTypes.map((type) => {
               const hidden = hiddenTypes.has(type);
+              const color = categoryColorVar(type);
               return (
                 <button
                   key={type}
                   onClick={() => toggleType(type)}
                   className="rounded-full border px-2 py-0.5 text-[11px] font-medium transition-opacity"
                   style={{
-                    borderColor: "var(--border)",
-                    color: hidden ? "var(--text-muted)" : "var(--text-secondary)",
+                    borderColor: hidden ? "var(--border)" : color,
+                    backgroundColor: hidden ? "transparent" : `color-mix(in srgb, ${color} 14%, transparent)`,
+                    color: hidden ? "var(--text-muted)" : color,
                     opacity: hidden ? 0.5 : 1,
                   }}
                   title={hidden ? "Click to show" : "Click to hide"}

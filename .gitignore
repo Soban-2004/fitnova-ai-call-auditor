@@ -14,4 +14,12 @@ uploads/
 # Throwaway audio for manually testing the Upload page — not the committed
 # demo dataset (that's backend/sample_calls/), never meant to be versioned.
 backend/test_uploads/
+# Local run history for the eval scripts (scripts/eval_*.py) -- personal
+# scratch data, not meant to be versioned.
+backend/scripts/eval_results.json
+backend/scripts/eval_results_live.json
+backend/scripts/eval_results_voice_agent.json
+# Synthesized scenario audio for eval_live_call.py, cached so repeated runs
+# don't re-synthesize via edge-tts every time -- regeneratable, not source.
+backend/scripts/_eval_audio_cache/
 .DS_Store

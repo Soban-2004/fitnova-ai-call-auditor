@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { formatTagLabel, scoreStatus } from "@/lib/utils";
+import { categoryColorVar, formatTagLabel, scoreStatus } from "@/lib/utils";
 import { EmptyState } from "./ScoreTrendChart";
 import type { DirectorDashboard } from "@/lib/types";
 
@@ -29,7 +29,15 @@ export function TeamComparisonTable({ teams }: { teams: DirectorDashboard["team_
               {teams.map((team) => (
                 <tr key={team.team_id} className="border-b last:border-0" style={{ borderColor: "var(--gridline)" }}>
                   <td className="py-2.5">
-                    <Link href={`/dashboard/team/${team.team_id}`} className="font-medium hover:underline" style={{ color: "var(--text-primary)" }}>
+                    <Link
+                      href={`/dashboard/team/${team.team_id}`}
+                      className="flex items-center gap-2 font-medium hover:underline"
+                      style={{ color: "var(--text-primary)" }}
+                    >
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: categoryColorVar(team.team_id) }}
+                      />
                       {team.team_name}
                     </Link>
                   </td>

@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { formatTagLabel } from "@/lib/utils";
+import { cn, formatTagLabel } from "@/lib/utils";
 import type { IssueTagOut } from "@/lib/types";
 
 const STATUS_ROLE: Record<string, "good" | "warning" | "critical" | "muted"> = {
@@ -27,9 +27,15 @@ export function IssueTagCard({
   onReview?: (tag: IssueTagOut, action: "confirm" | "dismiss") => void;
 }) {
   const isDismissed = tag.status === "dismissed";
+  const needsAttention = tag.severity === "critical" && tag.status === "open";
 
   return (
-    <Card className={isDismissed ? "opacity-60" : undefined}>
+    <Card
+      className={cn(
+        isDismissed && "opacity-60",
+        needsAttention && "animate-[criticalGlow_2.4s_ease-in-out_infinite]"
+      )}
+    >
       <CardContent className="pt-4">
         <div className="flex items-start justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5">

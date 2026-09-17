@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.analysis import IssueTag
 from app.models.score import CallScore
+from app.models.telemetry import LLMCallLog
 from app.schemas.dashboard import ScoreTrendPoint
 
 
@@ -69,6 +70,38 @@ async def top_tag_types(session: AsyncSession, call_ids: list, limit: int = 5) -
         .limit(limit)
     )
     return [(tag_type, cnt) for tag_type, cnt in rows.all()]
+
+
+async def llm_call_stats(session: AsyncSession, since: datetime) -> list[dict]:
+    """Aggregated call counts/latency/error breakdown per (provider, model,
+    purpose, outcome) since a given timestamp -- see routers/admin.py, the
+    only caller. The whole point of LLMCallLog: see at a glance which tier
+    of the Groq->Gemini->Ollama chain is actually carrying traffic, and how
+    often each one is failing, instead of grepping logs by hand."""
+    rows = await session.execute(
+        select(
+            LLMCallLog.provider,
+            LLMCallLog.model,
+            LLMCallLog.purpose,
+            LLMCallLog.outcome,
+            func.count().label("count"),
+            func.avg(LLMCallLog.latency_ms).label("avg_latency_ms"),
+        )
+        .where(LLMCallLog.created_at >= since)
+        .group_by(LLMCallLog.provider, LLMCallLog.model, LLMCallLog.purpose, LLMCallLog.outcome)
+        .order_by(LLMCallLog.provider, LLMCallLog.model, LLMCallLog.purpose)
+    )
+    return [
+        {
+            "provider": r.provider,
+            "model": r.model,
+            "purpose": r.purpose,
+            "outcome": r.outcome,
+            "count": r.count,
+            "avg_latency_ms": round(float(r.avg_latency_ms), 1) if r.avg_latency_ms is not None else None,
+        }
+        for r in rows.all()
+    ]
 
 
 def build_score_trend(

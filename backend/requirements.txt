@@ -46,3 +46,6 @@ boto3==1.35.99
 # Synthetic call generation (scripts/generate_sample_calls.py)
 edge-tts==7.2.8
 pydub==0.25.1
+
+# Cartesia TTS -- voice agent's spoken output (services/tts.py)
+cartesia[websockets]==4.2.0

@@ -3,6 +3,8 @@ from app.models.call import Call
 from app.models.transcript import TranscriptSegment
 from app.models.analysis import PromptVersion, IssueTag, DimensionRating
 from app.models.score import CallScore, ScoreAuditLog
+from app.models.telemetry import LLMCallLog
+from app.models.lead import Lead
 
 __all__ = [
     "Org",
@@ -15,4 +17,6 @@ __all__ = [
     "DimensionRating",
     "CallScore",
     "ScoreAuditLog",
+    "LLMCallLog",
+    "Lead",
 ]

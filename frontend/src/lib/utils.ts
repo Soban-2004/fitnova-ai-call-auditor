@@ -5,6 +5,8 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export type StatusRole = "good" | "warning" | "critical" | "muted";
+
 /** Score health -> status color role, matching the design doc's severity
  * color coding (red/amber/gray) extended to the score itself. */
 export function scoreStatus(score: number | null | undefined): "good" | "warning" | "critical" | "muted" {
@@ -23,6 +25,31 @@ export function callStatusRole(status: string): "good" | "warning" | "critical" 
   return "warning";
 }
 
+/** Lead.status -> status color role: NEW needs attention (warning), ASSIGNED/
+ * CONTACTED are in-progress (muted), TRIAL_BOOKED is the funnel's actual goal
+ * (good) -- same red/amber/gray-ish severity convention as scoreStatus. */
+export function leadStatusRole(status: string): "good" | "warning" | "critical" | "muted" {
+  if (status === "TRIAL_BOOKED") return "good";
+  if (status === "NEW") return "warning";
+  return "muted";
+}
+
+const CATEGORY_VARS = ["--cat-1", "--cat-2", "--cat-3", "--cat-4", "--cat-5"];
+
+/** Stable identity color for a team/advisor/tag type -- same seed always
+ * lands on the same hue (everywhere it's rendered), picked from the
+ * violet/indigo/sky/pink/fuchsia identity palette in globals.css. Kept
+ * clear of red/orange/amber/green so an avatar color never reads as a
+ * status/severity signal. */
+export function categoryColorVar(seed: string | null | undefined): string {
+  if (!seed) return "var(--text-muted)";
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return `var(${CATEGORY_VARS[hash % CATEGORY_VARS.length]})`;
+}
+
 export function severityColorVar(severity: string): string {
   switch (severity) {
     case "critical":
@@ -35,7 +62,7 @@ export function severityColorVar(severity: string): string {
   }
 }
 
-export function statusColorVar(status: "good" | "warning" | "critical" | "muted"): string {
+export function statusColorVar(status: StatusRole): string {
   switch (status) {
     case "good":
       return "var(--status-good)";
@@ -53,6 +80,14 @@ export function formatDuration(secs: number | null | undefined): string {
   const m = Math.floor(secs / 60);
   const s = Math.round(secs % 60);
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+/** Two-letter initials for an avatar chip, e.g. "Jane Doe" -> "JD". */
+export function initials(name: string | null | undefined): string {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 export function formatTagLabel(tag: string): string {

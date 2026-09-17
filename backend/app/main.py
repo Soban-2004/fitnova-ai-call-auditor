@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import calls, contest, dashboard, events, org, upload
+from app.routers import admin, calls, contest, dashboard, events, leads, live, org, upload, voice_agent
 from app.services.processor import run_worker
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-5s %(name)s: %(message)s")
@@ -60,7 +60,9 @@ app = FastAPI(title="FitNova Call Intelligence API", version="0.1.0", lifespan=l
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL],
+    # localhost:3001 added temporarily for local verification — port 3000 was
+    # occupied by an unrelated app when the frontend dev server started.
+    allow_origins=[settings.FRONTEND_URL, "http://localhost:3001"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -71,6 +73,10 @@ app.include_router(dashboard.router)
 app.include_router(org.router)
 app.include_router(contest.router)
 app.include_router(events.router)
+app.include_router(admin.router)
+app.include_router(live.router)
+app.include_router(voice_agent.router)
+app.include_router(leads.router)
 
 
 @app.get("/api/health")

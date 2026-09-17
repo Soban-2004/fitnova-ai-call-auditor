@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.analysis import IssueTag
 from app.schemas.contest import ContestRequest, ContestResponse, ReviewRequest, ReviewResponse
+from app.services import cache
 from app.services.rescoring import log_confirmation, recalculate_score
 
 router = APIRouter(prefix="/api/tags", tags=["contest"])
@@ -29,6 +30,7 @@ async def contest_tag(tag_id: str, body: ContestRequest, session: AsyncSession =
     tag.status = "contested"
     tag.contest_reason = body.reason
     await session.commit()
+    cache.invalidate_all()  # team dashboard's contest_queue must reflect this immediately, not up to TTL_SECONDS stale
 
     return ContestResponse(tag_id=str(tag.id), status=tag.status, message="Tag contested successfully")
 
@@ -57,6 +59,7 @@ async def review_tag(tag_id: str, body: ReviewRequest, session: AsyncSession = D
             reason=body.comment or "Tag confirmed as valid",
         )
         await session.commit()
+        cache.invalidate_all()  # tag leaves the contest queue -- same reasoning as contest_tag above
         return ReviewResponse(tag_id=str(tag.id), status=tag.status, score_updated=False)
 
     # dismiss
@@ -71,6 +74,7 @@ async def review_tag(tag_id: str, body: ReviewRequest, session: AsyncSession = D
         reason=body.comment or "Tag dismissed",
     )
     await session.commit()
+    cache.invalidate_all()  # score + contest queue both changed -- see cache.invalidate_all's docstring
 
     return ReviewResponse(
         tag_id=str(tag.id),

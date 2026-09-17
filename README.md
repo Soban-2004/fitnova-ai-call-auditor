@@ -3,7 +3,10 @@
 An AI pipeline that ingests recorded sales calls, transcribes and diarizes them, runs a
 3-pass LLM analysis (speaker roles, compliance/quality issues, dimension ratings),
 computes a deterministic score, and surfaces all of it through director/team-leader/advisor
-dashboards with a live contest-and-review workflow.
+dashboards with a live contest-and-review workflow. Two real-time voice-AI pipelines sit
+alongside the batch-scoring core: a live coaching companion that nudges an advisor mid-call,
+and a voice agent that runs its own qualification calls and hands off what it learns as a
+trackable Lead.
 
 A personal project built at production-level care rather than as a quick demo —
 real tests, real error handling, real failure-path recovery, not just a happy path.
@@ -27,6 +30,19 @@ real tests, real error handling, real failure-path recovery, not just a happy pa
   dashboard tab, which re-fetches in place (no polling, no manual reload needed).
 - **Upload page** — demo entry point standing in for a real telephony webhook; shows genuine
   live pipeline progress (not a fake progress bar — see [Design decisions](#design-decisions)).
+- **Live Call Coaching (`/live`)** — a real-time companion for a call already happening
+  through some other means: streams the advisor's mic to Deepgram's *live* (not batch) API
+  over a WebSocket and surfaces short coaching nudges as the conversation unfolds. When the
+  session ends it's persisted and scored exactly like an uploaded recording.
+- **Voice Intake Agent (`/agent`)** — the AI runs one side of the conversation itself: listens,
+  decides what to say via an LLM, and speaks it back with Cartesia TTS, including barge-in
+  (stops talking if the caller interrupts). When the call finishes, the transcript is scored
+  *and* structured lead info (name, phone, goal, health notes, availability, confirmed time)
+  is extracted into a new Lead — the agent's real hand-off, not just a spoken promise.
+- **Leads (`/leads`)** — every Lead the voice agent creates, assignable to an advisor and
+  tracked through `NEW -> ASSIGNED -> CONTACTED -> TRIAL_BOOKED`. An assigned lead links
+  straight to `/live` with that advisor pre-selected, connecting the AI's qualification call
+  to the human follow-up call it hands off to.
 
 ## Architecture
 
@@ -75,14 +91,41 @@ stateDiagram-v2
     COMPLETED --> [*]
 ```
 
+### Real-time voice pipelines
+
+Two separate WebSocket endpoints, sharing no state with the batch pipeline above and with
+each other — neither writes an audio file to disk; only the resulting transcript is ever
+persisted, as a `calls` row scored the same way an uploaded recording would be.
+
+```mermaid
+flowchart TD
+    subgraph Live["Live Call Coaching — /ws/live"]
+        A1["Advisor's browser mic"] -->|"raw PCM, WebSocket"| A2["Deepgram live streaming"]
+        A2 --> A3["Sliding-window nudge logic"]
+        A3 -->|"transcript + nudge events"| A4["Advisor's screen"]
+        A2 -.->|"session ends"| A5[("calls row, scored")]
+    end
+
+    subgraph Agent["Voice Intake Agent — /ws/agent"]
+        B1["Caller's browser mic"] -->|"raw PCM, WebSocket"| B2["Deepgram live streaming"]
+        B2 --> B3["LLM: decide next turn"]
+        B3 --> B4["Cartesia TTS"]
+        B4 -->|"spoken reply audio"| B1
+        B2 -.->|"conversation ends"| B5["Extract lead info"]
+        B5 --> B6[("calls row, scored")]
+        B5 --> B7[("leads row: NEW")]
+    end
+```
+
 ## Tech stack
 
 | Layer | Choice |
 |---|---|
 | Backend | FastAPI (async), SQLAlchemy 2.0 (async), asyncpg, Alembic, Neon Postgres |
 | Frontend | Next.js 14 (App Router), TypeScript, Tailwind, Recharts |
-| Transcription | Deepgram Nova-3 (STT + diarization) |
+| Transcription | Deepgram Nova-3 (STT + diarization, batch and live streaming) |
 | LLM | Groq -> Gemini -> Ollama Cloud fallback chain (no LangChain/LiteLLM — a thin provider abstraction) |
+| Voice agent TTS | Cartesia (LLM reply text -> spoken WAV, `services/tts.py`) |
 | Tag validation | Pydantic schema + RapidFuzz fuzzy match + Gemini embeddings (semantic similarity) |
 | Live updates | Server-Sent Events, in-process pub-sub (no Redis at this scale) |
 | Audio storage | Local disk (transcription) + Backblaze B2, S3-compatible API (durable backup, optional) |
@@ -108,8 +151,11 @@ cp ../.env.example .env.local   # keep only the NEXT_PUBLIC_API_URL line
 npm run dev
 ```
 
-Visit `http://localhost:3000`. To see real (not backfilled) data flowing through the
-pipeline, generate and process the 6 synthetic sample calls:
+Visit `http://localhost:3000`. `/live` and `/agent` need real microphone access (browser
+prompts for it), so they only work over `localhost` or HTTPS, not a bare `http://` LAN IP.
+
+To see real (not backfilled) data flowing through the pipeline, generate and process the 6
+synthetic sample calls:
 ```bash
 python scripts/generate_sample_calls.py     # edge-tts synthetic voices, ~2 min
 python scripts/process_all_samples.py       # uploads + polls each through the real pipeline
@@ -123,7 +169,9 @@ supply: `DATABASE_URL` (Neon connection string), `DEEPGRAM_API_KEY`, `GROQ_API_K
 `GEMINI_API_KEY` (also powers tag-validation embeddings, not just the LLM fallback),
 `OLLAMA_API_KEY`, and `NEXT_PUBLIC_API_URL` for the frontend. The four `B2_*` vars are
 optional — leave them blank to run without durable audio backup (see "Durable audio
-storage" under Design decisions).
+storage" under Design decisions). `CARTESIA_API_KEY` is also optional — leave it blank and
+the voice agent (`/agent`) still runs, just text-only (no spoken replies); `/live` doesn't
+use TTS at all and is unaffected either way.
 
 ### Optional: local Postgres instead of Neon
 
@@ -143,6 +191,23 @@ missing) drives the failure path exactly as the background worker would hit it i
 production. A couple of the tag-validation tests make a real call to Gemini's embedding
 API (only the ones where fuzzy match is expected to fail — see below), so they need
 `GEMINI_API_KEY` set and network access.
+
+The two real-time voice pipelines have their own simulation-based evals — not part of the
+`pytest` suite, run by hand against a real running server, since each one drives a real
+WebSocket connection with real synthesized audio (edge-tts) rather than a mock:
+
+```bash
+# Terminal 1
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+# Terminal 2
+python scripts/eval_live_call.py       # coaching-nudge pipeline: latency, transcript accuracy
+python scripts/eval_voice_agent.py     # full conversation: turn-taking, lead extraction
+```
+
+Each burns real Deepgram/LLM/(Cartesia, for the agent) quota — not something to loop or run
+in CI. Results append to `scripts/eval_results_live.json` / `eval_results_voice_agent.json`
+for tracking regressions over time.
 
 ## Deployment
 
@@ -310,6 +375,43 @@ region, and B2 rejects that format outright as `UnauthorizedAccess` rather than 
 signature error — fixed by explicitly forcing `Config(signature_version="s3v4")` and
 parsing the region straight out of the B2 endpoint hostname.
 
+**Two color systems, not one — status and identity never share a hue.**
+`app/globals.css` defines everything as CSS custom properties (`--surface-*`,
+`--text-*`, `--border`, `--status-*`), light by default and swapped by both
+`prefers-color-scheme` and an explicit `data-theme` override. On top of that
+sit two independent, deliberately non-overlapping palettes:
+- **Status roles** (`--status-good/warning/serious/critical`) are semantic —
+  red always means critical, green always means good, everywhere a `Badge`
+  appears (call status, score, issue severity, lead pipeline stage).
+- **Identity colors** (`--cat-1..5`, violet/indigo/sky/pink/fuchsia) are
+  assigned per entity via `categoryColorVar(seed)` in `lib/utils.ts` — a
+  stable hash of a team/advisor/tag-type ID always lands on the same hue,
+  so an advisor's avatar, sidebar entry, and chart series all agree without
+  passing color props around. The two sets share no hues on purpose: an
+  advisor's identity color must never be mistaken for a severity warning.
+
+Dark mode uses a warm charcoal (`#171412` family, a faint brown undertone)
+rather than neutral near-black, plus a single interactive accent (teal,
+`--series-1`) reserved for links, focus rings, and "this is live right now"
+— everything else stays neutral so the one thing that should draw the eye
+actually does.
+
+**Dense tables: hover-lift, not zebra striping.** `CallsTable` and
+`LeadsTable` use thin row rules and a subtle background tint on hover to
+help the eye track across a row, instead of alternating row colors — zebra
+striping is what makes a data table read as a spreadsheet dump rather than
+a product surface. Status is a small inline dot next to the text it
+describes (not a separate colored column), and every score gets a thin
+inline magnitude bar alongside the number, not just a color band, so scale
+reads before you even parse the digits.
+
+**The live-call glow is color displacement, not a blinking dot.** `/live`'s
+transcript panel stays neutral until a call is actually live, then gets a
+soft accent-colored glow (brighter still while speech is detected) —
+contrast, not decoration, signals "this is happening now." The mic level
+meter next to it is real: a Web Audio `AnalyserNode` tapped off the same
+stream sent to Deepgram, not a decorative pulse animation.
+
 ## What's real vs. what's simplified
 
 Being direct about this rather than letting it blend in:
@@ -336,6 +438,13 @@ Being direct about this rather than letting it blend in:
   tier runs one instance); would need Redis pub-sub the moment there's more than one.
 - **No real telephony adapter.** The Upload page is a deliberate stand-in for what a
   webhook from a telephony vendor would do automatically.
+- **The voice agent doesn't place or receive phone calls.** `/agent` and `/live` both speak
+  raw PCM over a browser WebSocket (a mic, not a phone line) — there is no Twilio/Vonage-style
+  bridge connecting either endpoint to the PSTN, and nothing schedules or originates a call
+  automatically. In a real deployment, a telephony provider would need to answer or place the
+  actual call and bridge its audio into the same WebSocket protocol already built; everything
+  *after* that bridge (transcription, the conversational loop, TTS, lead extraction, scoring)
+  is real and already working exactly as it would with a phone caller instead of a mic.
 - **Score history before this week is synthetic.** `seed_score_history.py` backdates 6
   weeks of jittered scores per real scored call purely so the trend charts have more than
   one data point to draw a line through — clearly separated by `source_system="seed_backfill"`
@@ -344,6 +453,10 @@ Being direct about this rather than letting it blend in:
 
 ## What's next
 
+- **Telephony bridge for `/live` and `/agent`** — the largest real gap: wiring in a provider
+  (Twilio, Vonage) to answer/place actual phone calls and bridge that audio into the existing
+  WebSocket protocol, plus a scheduler/dialer for outbound and consent/compliance handling.
+  Separate infrastructure work, not a voice-AI or scoring problem.
 - **Deepgram transcribe-by-URL** — transcription still reads the local copy of a fresh
   upload (see "Durable audio storage" below for why that's deliberate and low-risk); once
   B2 has a permanent copy, pointing Deepgram at a presigned URL directly would mean the
@@ -367,19 +480,25 @@ Being direct about this rather than letting it blend in:
 fitnova/
   backend/
     app/
-      adapters/       # source-agnostic ingestion (file_upload.py today)
+      adapters/       # source-agnostic ingestion (file_upload.py, live_call.py, voice_agent.py)
       llm/            # provider abstraction (Groq/Gemini/Ollama), fallback chain
-      models/         # SQLAlchemy ORM
-      routers/        # FastAPI endpoints
+      models/         # SQLAlchemy ORM (lead.py: the voice agent's hand-off record)
+      routers/        # FastAPI endpoints (live.py, voice_agent.py: WebSocket; leads.py: REST)
       schemas/        # Pydantic request/response + LLM output shapes
-      services/       # ingestion, transcription, analysis, validation, scoring, processor (worker), events (SSE + progress), audio_storage (B2)
+      services/       # ingestion, transcription, analysis, validation, scoring, processor
+                       # (worker), events (SSE + progress), audio_storage (B2), live_call.py
+                       # (coaching-nudge logic), voice_agent.py (conversation loop + lead
+                       # extraction), tts.py (Cartesia)
     alembic/versions/  # schema migrations
     sample_calls/      # the 6 committed demo audio files + manifest.json
+    scripts/           # eval_issue_detection.py, eval_live_call.py, eval_voice_agent.py —
+                        # simulation-based evals against the real running server, no mocks
     tests/
   frontend/
     src/
-      app/            # Next.js App Router pages (dashboards, call detail, calls log, upload)
-      components/     # dashboard/, call/, calls/, layout/, ui/
+      app/            # Next.js App Router pages (dashboards, call detail, calls log, upload,
+                       # live, agent, leads)
+      components/     # dashboard/, call/, calls/, layout/, ui/, live/, agent/, leads/
       lib/            # api client, types, formatting helpers
   scripts/            # generate_sample_calls.py, process_all_samples.py, seed_db.py, seed_score_history.py, upgrade_prompt.py
   render.yaml         # Render Blueprint (backend)

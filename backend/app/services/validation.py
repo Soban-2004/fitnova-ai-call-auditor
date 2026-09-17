@@ -32,6 +32,7 @@ from rapidfuzz import fuzz
 
 from app.config import settings
 from app.schemas.analysis import ISSUE_TAG_TYPES, SEVERITIES, IssueTagLLM
+from app.services.telemetry import track_llm_call
 
 logger = logging.getLogger("fitnova.validation")
 
@@ -128,11 +129,12 @@ async def validate_tag(tag: dict, transcript_segments: list[dict], call_duration
     if not fuzzy_pass:
         try:
             _ensure_genai_configured()
-            result = await genai.embed_content_async(
-                model=EMBEDDING_MODEL,
-                content=[quote, window_text],
-                task_type="SEMANTIC_SIMILARITY",
-            )
+            async with track_llm_call("gemini", EMBEDDING_MODEL, "semantic_validation"):
+                result = await genai.embed_content_async(
+                    model=EMBEDDING_MODEL,
+                    content=[quote, window_text],
+                    task_type="SEMANTIC_SIMILARITY",
+                )
             e0, e1 = np.array(result["embedding"][0]), np.array(result["embedding"][1])
             cosine_sim = float(np.dot(e0, e1) / (np.linalg.norm(e0) * np.linalg.norm(e1) + 1e-8))
         except Exception as e:

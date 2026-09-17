@@ -37,7 +37,7 @@ from app.services.analysis import detect_issues, get_active_prompt, identify_spe
 from app.services.events import broadcaster, set_call_progress
 from app.services.pii_redaction import redact_transcript_segments
 from app.services.scoring import compute_score
-from app.services.transcription import transcribe_call
+from app.services.transcription import TranscriptResult, transcribe_call
 from app.services.validation import validate_tag
 
 logger = logging.getLogger("fitnova.processor")
@@ -109,13 +109,32 @@ async def process_single_call(call_id: str, session: AsyncSession) -> None:
     if call is None:
         raise ValueError(f"Call {call_id} not found")
 
+    # A call from a source that already has a transcript (adapters/
+    # voice_agent.py, adapters/live_call.py) arrives with segments pre-set
+    # in raw_metadata -- no audio file to send to Deepgram. Whether speaker
+    # *role* is also already known depends on which adapter: the voice
+    # agent's turns are known apart by construction (it wrote every line
+    # itself); a live-coached session is diarized ("Speaker 0/1") but still
+    # needs the same speaker-ID LLM pass a normal upload gets, since nothing
+    # in a live session tells you which speaker was the advisor.
+    pending_segments = (call.raw_metadata or {}).get("pending_segments")
+    speaker_roles_known = bool(pending_segments) and all(seg.get("speaker_role") for seg in pending_segments)
+
     # --- Step 1: TRANSCRIBING ---
     _touch(call, "TRANSCRIBING")
     await session.flush()
     await _report_step(call_id, "TRANSCRIPTION")
 
-    # --- Step 2: Deepgram transcription (+ diarization) ---
-    transcript = await transcribe_call(call.audio_ref)
+    # --- Step 2: Deepgram transcription (+ diarization) -- skipped when the
+    # transcript is already known (see pending_segments above). ---
+    if pending_segments is not None:
+        total_duration = pending_segments[-1]["end_ts"] if pending_segments else 0.0
+        distinct_speakers = len({seg["speaker_label"] for seg in pending_segments})
+        transcript = TranscriptResult(
+            segments=pending_segments, duration_secs=total_duration, distinct_speakers=distinct_speakers
+        )
+    else:
+        transcript = await transcribe_call(call.audio_ref)
 
     # --- Edge case: mono / poor diarization — skip per-speaker analysis
     # (speaker ID call below), still process content normally. ---
@@ -148,11 +167,15 @@ async def process_single_call(call_id: str, session: AsyncSession) -> None:
         " (short call)" if is_short else "",
     )
 
-    # --- Step 5-6: Speaker role identification (skipped for mono audio —
-    # there's only one detected speaker, nothing to disambiguate) ---
+    # --- Step 5-6: Speaker role identification (skipped for mono audio --
+    # there's only one detected speaker, nothing to disambiguate -- and
+    # skipped when speaker_role already arrived pre-known, e.g. a
+    # voice-agent call, see speaker_roles_known above) ---
     await _report_step(call_id, "SPEAKER_ID")
     metadata = dict(call.raw_metadata or {})
-    if diarization_quality == "good":
+    if speaker_roles_known:
+        metadata["speaker_id_skipped"] = "pre_known_voice_agent_roles"
+    elif diarization_quality == "good":
         speaker_prompt = await get_active_prompt(session, "speaker_identification")
         speaker_result = await identify_speakers(_seg_dicts(segment_rows), speaker_prompt.system_prompt)
 

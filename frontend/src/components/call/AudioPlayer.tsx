@@ -2,17 +2,20 @@
 
 import { forwardRef, useState } from "react";
 import { Card, CardContent } from "@/components/ui/Card";
+import { cn } from "@/lib/utils";
 
 /** Native <audio> element wired up for the transcript's click-to-seek: the
  * parent holds the ref + currentTime state and passes seeks down to
  * TranscriptViewer, so this component stays a thin, uncontrolled wrapper. */
-export const AudioPlayer = forwardRef<HTMLAudioElement, { src: string; onTimeUpdate?: (secs: number) => void }>(
-  function AudioPlayer({ src, onTimeUpdate }, ref) {
+export const AudioPlayer = forwardRef<
+  HTMLAudioElement,
+  { src: string; onTimeUpdate?: (secs: number) => void; className?: string }
+>(function AudioPlayer({ src, onTimeUpdate, className }, ref) {
     const [unavailable, setUnavailable] = useState(false);
 
     if (unavailable) {
       return (
-        <Card>
+        <Card className={className}>
           <CardContent className="py-3 text-sm" style={{ color: "var(--text-muted)" }}>
             Audio unavailable for this call.
           </CardContent>
@@ -21,7 +24,7 @@ export const AudioPlayer = forwardRef<HTMLAudioElement, { src: string; onTimeUpd
     }
 
     return (
-      <Card>
+      <Card className={cn("shadow-lg", className)}>
         <CardContent className="py-3">
           {/* eslint-disable-next-line jsx-a11y/media-has-caption -- source recordings have no caption track */}
           <audio

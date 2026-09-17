@@ -13,6 +13,18 @@
   }
 }
 
+/* Slow breathing glow for unresolved critical issues -- draws the eye to
+   what still needs attention without a hard blink. */
+@keyframes criticalGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--status-critical) 30%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 14px -2px color-mix(in srgb, var(--status-critical) 55%, transparent);
+  }
+}
+
 /*
  * Design tokens — from the validated reference palette (dataviz skill,
  * references/palette.md). Light is the default; dark applies both via the
@@ -31,7 +43,17 @@
   --axis: #c3c2b7;
   --border: rgba(11, 11, 11, 0.1);
 
-  --series-1: #2a78d6; /* the only categorical hue this app uses (see note below) */
+  --series-1: #0891b2; /* interactive/live accent -- actions, links, focus, "this is happening now" */
+
+  /* Identity palette -- stable per-entity color (team, advisor, tag type),
+     picked via lib/utils.ts categoryColorVar(seed). Deliberately clear of
+     red/orange/amber/green, which the status tokens below already own, so a
+     colorful advisor avatar never reads as a severity signal. */
+  --cat-1: #7c3aed; /* violet */
+  --cat-2: #4f46e5; /* indigo */
+  --cat-3: #0284c7; /* sky */
+  --cat-4: #db2777; /* pink */
+  --cat-5: #a21caf; /* fuchsia */
 
   --status-good: #0ca30c;
   --status-warning: #fab219;
@@ -43,17 +65,26 @@
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
-    --surface-1: #1a1a19;
-    --surface-2: #202020;
-    --page: #0d0d0d;
+    /* Warm charcoal instead of neutral black -- a faint red/brown undertone
+       (not a blue-black) so it reads as a designed dark surface rather than
+       an unstyled OLED background. */
+    --surface-1: #201d1a;
+    --surface-2: #27231f;
+    --page: #171412;
     --text-primary: #ffffff;
     --text-secondary: #c3c2b7;
     --text-muted: #898781;
-    --gridline: #2c2c2a;
-    --axis: #383835;
-    --border: rgba(255, 255, 255, 0.1);
+    --gridline: #332f2a;
+    --axis: #423d37;
+    --border: rgba(255, 247, 237, 0.09);
 
-    --series-1: #3987e5;
+    --series-1: #22d3ee;
+
+    --cat-1: #a78bfa;
+    --cat-2: #818cf8;
+    --cat-3: #38bdf8;
+    --cat-4: #f472b6;
+    --cat-5: #e879f9;
 
     --status-good: #0ca30c;
     --status-warning: #fab219;
@@ -65,17 +96,23 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --surface-1: #1a1a19;
-  --surface-2: #202020;
-  --page: #0d0d0d;
+  --surface-1: #201d1a;
+  --surface-2: #27231f;
+  --page: #171412;
   --text-primary: #ffffff;
   --text-secondary: #c3c2b7;
   --text-muted: #898781;
-  --gridline: #2c2c2a;
-  --axis: #383835;
-  --border: rgba(255, 255, 255, 0.1);
+  --gridline: #332f2a;
+  --axis: #423d37;
+  --border: rgba(255, 247, 237, 0.09);
 
-  --series-1: #3987e5;
+  --series-1: #22d3ee;
+
+  --cat-1: #a78bfa;
+  --cat-2: #818cf8;
+  --cat-3: #38bdf8;
+  --cat-4: #f472b6;
+  --cat-5: #e879f9;
 
   --status-good: #0ca30c;
   --status-warning: #fab219;

@@ -5,12 +5,19 @@ import type {
   CallListFilters,
   CallListResponse,
   DirectorDashboard,
+  LeadOut,
+  LeadStatus,
   ScoreTrendPoint,
   Team,
   TeamDashboard,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+// Same host as API_URL, just the ws(s):// scheme -- used by the live-call
+// WebSocket (components/live/LiveCallPanel.tsx), the one connection in this
+// app that isn't a plain REST call.
+export const WS_URL = API_URL.replace(/^http/, "ws");
 
 export class ApiError extends Error {
   status: number;
@@ -93,4 +100,25 @@ export const api = {
     apiFetch<{ call_id: string; status: string; retry_count: number; steps_completed: string[]; current_step: string | null }>(
       `/api/calls/${callId}/status`
     ),
+
+  listLeads: (filters: { status?: string; assigned_advisor_id?: string } = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) {
+      if (value) params.set(key, value);
+    }
+    const qs = params.toString();
+    return apiFetch<LeadOut[]>(`/api/leads${qs ? `?${qs}` : ""}`);
+  },
+
+  assignLead: (leadId: string, advisorId: string) =>
+    apiFetch<LeadOut>(`/api/leads/${leadId}/assign`, {
+      method: "POST",
+      body: JSON.stringify({ advisor_id: advisorId }),
+    }),
+
+  updateLeadStatus: (leadId: string, status: LeadStatus) =>
+    apiFetch<LeadOut>(`/api/leads/${leadId}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    }),
 };

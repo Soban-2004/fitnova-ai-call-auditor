@@ -1,8 +1,47 @@
 "use client";
 
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import type { TooltipContentProps } from "recharts";
+import type { NameType, ValueType } from "recharts/types/component/DefaultTooltipContent";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import type { ScoreTrendPoint } from "@/lib/types";
+
+/** Value-callout bubble instead of a plain tooltip box — a small pill that
+ * floats above the hovered point with a pointer tail, the way Ghost's
+ * dashboard surfaces a chart value on hover rather than a bare box. */
+function ScoreCallout({ active, payload }: TooltipContentProps<ValueType, NameType>) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0].payload as ScoreTrendPoint;
+  return (
+    <div className="flex flex-col items-center">
+      <div
+        className="whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold text-white shadow-lg"
+        style={{ backgroundColor: "var(--series-1)" }}
+      >
+        {point.avg_score.toFixed(1)}
+        <span className="ml-1.5 font-normal opacity-80">
+          {point.call_count} call{point.call_count === 1 ? "" : "s"}
+        </span>
+      </div>
+      <div
+        className="h-1.5 w-1.5 rotate-45"
+        style={{ backgroundColor: "var(--series-1)", marginTop: -3 }}
+      />
+    </div>
+  );
+}
+
+/** Glowing active dot -- a soft halo behind the point on hover, echoing the
+ * "live" glow treatment used elsewhere instead of a plain filled circle. */
+function GlowDot({ cx, cy }: { cx?: number; cy?: number }) {
+  if (cx === undefined || cy === undefined) return null;
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={8} fill="var(--series-1)" opacity={0.18} />
+      <circle cx={cx} cy={cy} r={4} fill="var(--series-1)" stroke="var(--surface-1)" strokeWidth={2} />
+    </g>
+  );
+}
 
 export function ScoreTrendChart({
   title = "Score trend",
@@ -56,27 +95,14 @@ export function ScoreTrendChart({
                 tickLine={false}
                 width={40}
               />
-              <Tooltip
-                cursor={{ stroke: "var(--axis)", strokeWidth: 1 }}
-                contentStyle={{
-                  backgroundColor: "var(--surface-2)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  fontSize: 12,
-                  color: "var(--text-primary)",
-                }}
-                formatter={(value, name) => [
-                  name === "avg_score" ? Number(value).toFixed(1) : value,
-                  name === "avg_score" ? "Avg score" : "Calls",
-                ]}
-              />
+              <Tooltip cursor={{ stroke: "var(--axis)", strokeWidth: 1 }} content={(props) => <ScoreCallout {...props} />} />
               <Line
                 type="monotone"
                 dataKey="avg_score"
                 stroke="var(--series-1)"
                 strokeWidth={2}
                 dot={{ r: 3, fill: "var(--series-1)", strokeWidth: 0 }}
-                activeDot={{ r: 5 }}
+                activeDot={<GlowDot />}
               />
             </LineChart>
           </ResponsiveContainer>

@@ -49,6 +49,12 @@ class FileUploadAdapter(BaseSourceAdapter):
         dest_path = self.upload_dir / stored_filename
 
         contents = await audio_file.read()
+        if len(contents) > settings.MAX_UPLOAD_SIZE_BYTES:
+            raise ValueError(
+                f"File too large ({len(contents) / 1_000_000:.1f}MB) — "
+                f"max is {settings.MAX_UPLOAD_SIZE_BYTES / 1_000_000:.0f}MB."
+            )
+
         async with aiofiles.open(dest_path, "wb") as out:
             await out.write(contents)
 

@@ -1,7 +1,20 @@
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { formatDateTime, scoreStatus } from "@/lib/utils";
 import type { ScoreHistoryEntry } from "@/lib/types";
+
+function ScoreDelta({ delta }: { delta: number }) {
+  if (delta === 0) return null;
+  const up = delta > 0;
+  const color = up ? "var(--delta-good)" : "var(--status-critical)";
+  return (
+    <span className="flex items-center gap-0.5 text-[11px] font-medium tabular-nums" style={{ color }}>
+      {up ? <ArrowUp size={11} /> : <ArrowDown size={11} />}
+      {Math.abs(delta)}
+    </span>
+  );
+}
 
 export function ScoreHistory({ history }: { history: ScoreHistoryEntry[] }) {
   if (history.length <= 1) return null; // nothing to show until a dismiss creates version 2+
@@ -30,6 +43,7 @@ export function ScoreHistory({ history }: { history: ScoreHistoryEntry[] }) {
                   v{entry.version}
                 </span>
                 <Badge role={scoreStatus(entry.final_score)}>{entry.final_score}</Badge>
+                {i > 0 && <ScoreDelta delta={entry.final_score - chronological[i - 1].final_score} />}
                 <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                   {entry.trigger}
                 </span>

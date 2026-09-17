@@ -88,7 +88,9 @@ export function CallDetailClient({ callId, initialCall }: { callId: string; init
     <>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_380px]">
         <div className="flex flex-col gap-4">
-          <AudioPlayer ref={audioRef} src={api.audioUrl(callId)} onTimeUpdate={setPlayheadSecs} />
+          <div className="sticky top-4 z-20">
+            <AudioPlayer ref={audioRef} src={api.audioUrl(callId)} onTimeUpdate={setPlayheadSecs} />
+          </div>
           <TranscriptViewer
             segments={call.transcript}
             tags={call.issue_tags}

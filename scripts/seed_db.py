@@ -29,6 +29,11 @@ ORG_ID = uuid.UUID("a0000000-0000-0000-0000-000000000001")
 TEAM_ALPHA_ID = uuid.UUID("b0000000-0000-0000-0000-000000000001")
 TEAM_BETA_ID = uuid.UUID("b0000000-0000-0000-0000-000000000002")
 TEAM_GAMMA_ID = uuid.UUID("b0000000-0000-0000-0000-000000000003")
+# Not a human team -- a home for the voice agent's virtual advisor (see
+# config.py's AI_AGENT_ADVISOR_ID), so its scored calls show up in the
+# Team/Director dashboards' team-comparison views exactly like Alpha/Beta/
+# Gamma, no special-cased dashboard code needed.
+TEAM_AI_AGENTS_ID = uuid.UUID("b0000000-0000-0000-0000-000000000004")
 
 ADVISOR_IDS = {
     "Priya Sharma": uuid.UUID("c0000000-0000-0000-0000-000000000001"),
@@ -37,12 +42,15 @@ ADVISOR_IDS = {
     "Vikram Patel": uuid.UUID("c0000000-0000-0000-0000-000000000004"),
     "Sneha Gupta": uuid.UUID("c0000000-0000-0000-0000-000000000005"),
     "Arjun Nair": uuid.UUID("c0000000-0000-0000-0000-000000000006"),
+    # Must match config.py's AI_AGENT_ADVISOR_ID exactly.
+    "FitNova AI Agent": uuid.UUID("c0000000-0000-0000-0000-000000000007"),
 }
 
 TEAMS = {
     TEAM_ALPHA_ID: {"name": "Team Alpha", "advisors": ["Priya Sharma", "Rahul Mehta"]},
     TEAM_BETA_ID: {"name": "Team Beta", "advisors": ["Ananya Reddy", "Vikram Patel"]},
     TEAM_GAMMA_ID: {"name": "Team Gamma", "advisors": ["Sneha Gupta", "Arjun Nair"]},
+    TEAM_AI_AGENTS_ID: {"name": "AI Agents", "advisors": ["FitNova AI Agent"]},
 }
 
 PROMPT_DIR = BACKEND_DIR / "prompts"

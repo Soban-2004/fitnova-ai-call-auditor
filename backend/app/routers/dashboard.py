@@ -18,6 +18,7 @@ from app.database import get_db
 from app.models.analysis import IssueTag
 from app.models.call import Call
 from app.models.org import Advisor, Org, Team
+from app.services import cache
 from app.schemas.dashboard import (
     AdvisorDashboard,
     AdvisorLeaderboardRow,
@@ -129,6 +130,11 @@ async def score_trend(
 
 @router.get("/director", response_model=DirectorDashboard)
 async def director_dashboard(session: AsyncSession = Depends(get_db)):
+    cache_key = "director"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     org = (await session.execute(select(Org).limit(1))).scalar_one_or_none()
     org_name = org.name if org else "FitNova"
 
@@ -185,7 +191,7 @@ async def director_dashboard(session: AsyncSession = Depends(get_db)):
         await session.execute(select(IssueTag).where(IssueTag.status == "needs_review"))
     ).scalars().all()
 
-    return DirectorDashboard(
+    result = DirectorDashboard(
         org_name=org_name,
         summary=DirectorSummary(
             total_calls=total_calls, avg_score=avg_score, calls_this_week=calls_this_week, score_trend=score_trend
@@ -195,10 +201,17 @@ async def director_dashboard(session: AsyncSession = Depends(get_db)):
         team_comparison=team_comparison,
         attention_needed=AttentionNeeded(failed_calls=failed_calls, needs_review_tags=len(needs_review_tags)),
     )
+    cache.set(cache_key, result)
+    return result
 
 
 @router.get("/team/{team_id}", response_model=TeamDashboard)
 async def team_dashboard(team_id: str, session: AsyncSession = Depends(get_db)):
+    cache_key = f"team:{team_id}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     team = await session.get(Team, team_id)
     if team is None:
         raise HTTPException(status_code=404, detail=f"Team {team_id} not found")
@@ -287,7 +300,7 @@ async def team_dashboard(team_id: str, session: AsyncSession = Depends(get_db)):
     issue_distribution_raw = await top_tag_types(session, scoring_call_ids, limit=10)
     issue_distribution = [IssueDistributionRow(tag_type=t, count=c) for t, c in issue_distribution_raw]
 
-    return TeamDashboard(
+    result = TeamDashboard(
         team_id=str(team.id),
         team_name=team.name,
         summary=TeamSummary(
@@ -300,10 +313,17 @@ async def team_dashboard(team_id: str, session: AsyncSession = Depends(get_db)):
         contest_queue=contest_queue,
         issue_distribution=issue_distribution,
     )
+    cache.set(cache_key, result)
+    return result
 
 
 @router.get("/advisor/{advisor_id}", response_model=AdvisorDashboard)
 async def advisor_dashboard(advisor_id: str, session: AsyncSession = Depends(get_db)):
+    cache_key = f"advisor:{advisor_id}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     advisor = await session.get(Advisor, advisor_id)
     if advisor is None:
         raise HTTPException(status_code=404, detail=f"Advisor {advisor_id} not found")
@@ -345,7 +365,7 @@ async def advisor_dashboard(advisor_id: str, session: AsyncSession = Depends(get
         for c in recent_calls_raw
     ]
 
-    return AdvisorDashboard(
+    result = AdvisorDashboard(
         advisor_id=str(advisor.id),
         advisor_name=advisor.name,
         team_name=team.name if team else "Unknown",
@@ -358,3 +378,5 @@ async def advisor_dashboard(advisor_id: str, session: AsyncSession = Depends(get
         ),
         recent_calls=recent_calls,
     )
+    cache.set(cache_key, result)
+    return result
